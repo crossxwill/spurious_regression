@@ -36,7 +36,7 @@ The following function runs `tsCV` on both a naive model and a linear regression
 ```r
 detectSpuriousRegCV <- function(y, h=1, xreg, initial=20){
 
-  if(length(y) != length(xreg)) {
+  if(NROW(y) != NROW(xreg)) {
     warning('y and X are of different lengths. Data will be truncated. \n')
       
     minLength <- min(NROW(y), NROW(xreg))
