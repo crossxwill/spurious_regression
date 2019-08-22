@@ -2,7 +2,7 @@
 
 Using the `forecast` package, I propose an approach to detect spurious regressions using time-series cross-validation. The method is as follows:
 
-1. For each rolling subset of time-series data (i.e., rolling training data), fit a linear regression model and a competing naive model. A naive model uses only the last data point of the training data.
+1. For each rolling subset of time-series data (i.e., rolling training data), fit a linear regression model and a competing naive plus drift model (i.e., random walk with drift). A naive plus drift model uses only the last data point of the training data plus a drift. To reduce typing, "random walk with drift model" and "naive plus drift model" will be referred to as "naive model".
 
 2. Measure the MSE of each model (i.e, regression and naive) using a rolling test data set that is `h=1` period ahead of the training data.
 
@@ -32,11 +32,13 @@ linRegCV <- function(y, h, xreg){
 
 The following function runs `tsCV` on both a naive model and a linear regression model. Then the function computes the CV mean-squared error (CVMSE) of each model. It is recommended to use `h=1`.
 
+For long time series, increase the `initial` parameter to a large integer. A small number of `initial` would increase computation time.
+
 
 ```r
 detectSpuriousRegCV <- function(y, h=1, xreg, initial=20){
 
-  if(NROW(y) != NROW(xreg)) {
+  if(length(y) != NROW(xreg)) {
     warning('y and X are of different lengths. Data will be truncated. \n')
       
     minLength <- min(NROW(y), NROW(xreg))
@@ -46,9 +48,11 @@ detectSpuriousRegCV <- function(y, h=1, xreg, initial=20){
     }
   
   linRegCVResiduals<- tsCV(y=y, linRegCV, h=h, xreg=xreg, initial=initial)
-  naiveCVResiduals <- tsCV(y=y, naive, h=h, initial=initial)
+  naiveCVResiduals <- tsCV(y=y, rwf, h=h, initial=initial, drift=TRUE)
   
   naiveCVResiduals[is.na(linRegCVResiduals)] <- NA # leads and lags in the regression may introduce NA
+  linRegCVResiduals[is.na(naiveCVResiduals)] <- NA # differencing may introduce NA
+
   
   MSE_lm <- mean(linRegCVResiduals^2, na.rm=TRUE)
   MSE_naive <- mean(naiveCVResiduals^2, na.rm=TRUE)
@@ -81,7 +85,7 @@ detectSpuriousRegCV(y=ausair, h=1, xreg=guinearice)
 ## [1] 21.53863
 ## 
 ## $CV_MSE_naive
-## [1] 10.77681
+## [1] 7.602087
 ## 
 ## $SpuriousRegression
 ## [1] TRUE
@@ -107,7 +111,7 @@ detectSpuriousRegCV(y=consumption, h=1, xreg=income)
 ## [1] 0.3625108
 ## 
 ## $CV_MSE_naive
-## [1] 0.4800927
+## [1] 0.4888498
 ## 
 ## $SpuriousRegression
 ## [1] FALSE
@@ -146,10 +150,10 @@ mean(unlist(simulateSpuriousRegression))
 ```
 
 ```
-## [1] 0.95
+## [1] 0.99
 ```
 
-Based on the simulation, `detectSpuriousRegCV` correctly found the spurious regression 95% of the time with `h=3`.
+Based on the simulation, `detectSpuriousRegCV` correctly found the spurious regression 99% of the time with `h=3`.
 
 Since there is a strong deterministic trend in both pairs of time series, the `h=3` parameter is poorly chosen. Use `h=1` instead.
 
@@ -191,7 +195,7 @@ mean(unlist(simulateSpuriousRegressionStrongTrend_h3))
 ```
 
 ```
-## [1] 0.45
+## [1] 0.91
 ```
 
 With `h=3`, strong deterministic trends reduce the effectiveness of `detectSpuriousRegCV`.
@@ -210,17 +214,19 @@ mean(unlist(simulateSpuriousRegressionStrongTrend_h1))
 ```
 
 ```
-## [1] 0.95
+## [1] 1
 ```
 
-Based on the simulation, `detectSpuriousRegCV` correctly found the spurious regression 95% of the time with `h=1`. When detecting spurious regression with cross-validation, always set `h=1`.
+Based on the simulation, `detectSpuriousRegCV` correctly found the spurious regression 100% of the time with `h=1`. When detecting spurious regression with cross-validation, always set `h=1`.
 
 # Further work
 
 1. How does `detectSpuriousRegCV` perform on very long non-stationary time series (n > 1000)?
 
-2. Could we modify the naive model to include drift and trend?
+2. What if $y$ and $x$ are independent random walks with no drift and no trend? Would `detectSpuriousRegCV` perform well?
 
-3. How does `detectSpuriousRegCV`perform on co-integrated time series?
+3. How does `detectSpuriousRegCV`perform on co-integrated time series? Stationary time series?
 
 4. How does `detectSpuriousRegCV` benchmark against popular co-integration tests like Engle-Granger and Phillips–Ouliaris?
+
+5. What if $y$ and $x$ both have integration order > 1? Would `detectSpuriousRegCV` perform well?
